@@ -32,7 +32,7 @@ export function CashFlowChart({ data }: CashFlowChartProps) {
         </div>
       </div>
       <div className="h-72">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <AreaChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis

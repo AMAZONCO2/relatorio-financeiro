@@ -33,7 +33,7 @@ export function RadarChartSection({ data }: RadarChartSectionProps) {
         Dimensões de Performance
       </h3>
       <div className="flex flex-col gap-6">
-        <ResponsiveContainer width="100%" height={220}>
+        <ResponsiveContainer width="100%" height={220} minWidth={0}>
           <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data}>
             <PolarGrid stroke="#e2e8f0" />
             <PolarAngleAxis
@@ -65,7 +65,7 @@ export function RadarChartSection({ data }: RadarChartSectionProps) {
           <h4 className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">
             Comparativo por Dimensão
           </h4>
-          <ResponsiveContainer width="100%" height={190}>
+          <ResponsiveContainer width="100%" height={190} minWidth={0}>
             <BarChart
               data={comparativeData}
               margin={{ top: 0, right: 0, left: -20, bottom: 0 }}

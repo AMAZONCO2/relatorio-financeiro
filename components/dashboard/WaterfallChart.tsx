@@ -23,7 +23,7 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
         Decomposição DRE (Cascata)
       </h3>
       <div className="h-72">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <BarChart data={data} barSize={40}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis
