@@ -29,6 +29,19 @@ export default function HomePage() {
       <Header />
       <PrintHeader />
 
+      {/* Banner Alpha — Uso Interno */}
+      <div className="no-print max-w-[1400px] mx-auto mb-4">
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 text-sm font-medium">
+          <span className="shrink-0 text-lg" role="img" aria-label="aviso">
+            ⚠️
+          </span>
+          <p>
+            <strong>Versão Alpha</strong> — Este relatório é de uso interno e
+            confidencial. Não compartilhe com pessoas externas à organização.
+          </p>
+        </div>
+      </div>
+
       <main className="max-w-[1400px] mx-auto space-y-6 print:space-y-3">
         {/* KPIs Principais */}
         <KpiCards data={kpiData} />
