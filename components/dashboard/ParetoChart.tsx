@@ -9,6 +9,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  LabelList,
 } from "recharts";
 import type { ParetoDataPoint } from "@/types/financial";
 
@@ -28,11 +29,13 @@ export function ParetoChart({ data }: ParetoChartProps) {
             Impacto de impostos e custos operacionais sobre a Receita Bruta
           </p>
         </div>
-        
       </div>
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-          <ComposedChart data={data}>
+          <ComposedChart
+            data={data}
+            margin={{ top: 28, right: 10, left: 0, bottom: 0 }}
+          >
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis
               dataKey="name"
@@ -61,7 +64,14 @@ export function ParetoChart({ data }: ParetoChartProps) {
               dataKey="cost"
               fill="#1e293b"
               radius={[4, 4, 0, 0]}
-            />
+            >
+              <LabelList
+                dataKey="cost"
+                position="top"
+                formatter={(v) => `R$ ${Number(v ?? 0)}`}
+                style={{ fontSize: 9, fontWeight: 700, fill: "#64748b" }}
+              />
+            </Bar>
             <Line
               yAxisId="right"
               type="monotone"
@@ -69,7 +79,14 @@ export function ParetoChart({ data }: ParetoChartProps) {
               stroke="#f59e0b"
               strokeWidth={3}
               dot={{ r: 4, fill: "#f59e0b" }}
-            />
+            >
+              <LabelList
+                dataKey="cumulative"
+                position="top"
+                formatter={(v) => `${Number(v ?? 0)}%`}
+                style={{ fontSize: 9, fontWeight: 700, fill: "#64748b" }}
+              />
+            </Line>
           </ComposedChart>
         </ResponsiveContainer>
       </div>

@@ -13,6 +13,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  LabelList,
 } from "recharts";
 import type { RadarDataPoint } from "@/types/financial";
 
@@ -68,7 +69,7 @@ export function RadarChartSection({ data }: RadarChartSectionProps) {
           <ResponsiveContainer width="100%" height={190} minWidth={0}>
             <BarChart
               data={comparativeData}
-              margin={{ top: 0, right: 0, left: -20, bottom: 0 }}
+              margin={{ top: 28, right: 0, left: -20, bottom: 0 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis
@@ -88,13 +89,25 @@ export function RadarChartSection({ data }: RadarChartSectionProps) {
                 name="Comunidade"
                 fill="#10b981"
                 radius={[3, 3, 0, 0]}
-              />
+              >
+                <LabelList
+                  dataKey="comunidade"
+                  position="top"
+                  style={{ fontSize: 9, fontWeight: 700, fill: "#64748b" }}
+                />
+              </Bar>
               <Bar
                 dataKey="desenvolvedor"
                 name="Desenvolvedor"
                 fill="#3b82f6"
                 radius={[3, 3, 0, 0]}
-              />
+              >
+                <LabelList
+                  dataKey="desenvolvedor"
+                  position="top"
+                  style={{ fontSize: 9, fontWeight: 700, fill: "#64748b" }}
+                />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>

@@ -9,6 +9,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  LabelList,
 } from "recharts";
 import type { WaterfallDataPoint } from "@/types/financial";
 
@@ -24,7 +25,11 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
       </h3>
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-          <BarChart data={data} barSize={40}>
+          <BarChart
+            data={data}
+            barSize={40}
+            margin={{ top: 28, right: 10, left: 0, bottom: 0 }}
+          >
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis
               dataKey="name"
@@ -39,6 +44,15 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
             />
             <Tooltip cursor={{ fill: "transparent" }} />
             <Bar dataKey="value">
+              <LabelList
+                dataKey="value"
+                position="top"
+                formatter={(v) => {
+                  const n = Number(v ?? 0);
+                  return n >= 0 ? `R$ ${n}` : `-R$ ${Math.abs(n)}`;
+                }}
+                style={{ fontSize: 9, fontWeight: 700, fill: "#64748b" }}
+              />
               {data.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={entry.color} />
               ))}

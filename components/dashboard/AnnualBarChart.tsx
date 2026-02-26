@@ -10,14 +10,20 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  LabelList,
 } from "recharts";
 import type { AnnualBarDataPoint } from "@/types/financial";
+import { createSparseLabelContent } from "@/components/charts/SparseLabelList";
+
+const DENSE_THRESHOLD = 12;
 
 interface AnnualBarChartProps {
   data: AnnualBarDataPoint[];
 }
 
 export function AnnualBarChart({ data }: AnnualBarChartProps) {
+  const isDense = data.length > DENSE_THRESHOLD;
+  const sparseContent = createSparseLabelContent(data.length);
   return (
     <section className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
       <div className="flex justify-between items-center mb-6">
@@ -43,7 +49,12 @@ export function AnnualBarChart({ data }: AnnualBarChartProps) {
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <ComposedChart
             data={data}
-            margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+            margin={{
+              top: isDense ? 40 : 28,
+              right: isDense ? 30 : 10,
+              left: -20,
+              bottom: 0,
+            }}
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis
@@ -86,14 +97,32 @@ export function AnnualBarChart({ data }: AnnualBarChartProps) {
               fill="#3b82f6"
               radius={[3, 3, 0, 0]}
               barSize={8}
-            />
+            >
+              {!isDense && (
+                <LabelList
+                  dataKey="developer"
+                  position="top"
+                  formatter={(v) => `R$ ${Number(v ?? 0)}M`}
+                  style={{ fontSize: 9, fontWeight: 700, fill: "#64748b" }}
+                />
+              )}
+            </Bar>
             <Bar
               dataKey="community"
               name="community"
               fill="#10b981"
               radius={[3, 3, 0, 0]}
               barSize={8}
-            />
+            >
+              {!isDense && (
+                <LabelList
+                  dataKey="community"
+                  position="top"
+                  formatter={(v) => `R$ ${Number(v ?? 0)}M`}
+                  style={{ fontSize: 9, fontWeight: 700, fill: "#64748b" }}
+                />
+              )}
+            </Bar>
             <Line
               type="monotone"
               dataKey="total"
@@ -102,7 +131,19 @@ export function AnnualBarChart({ data }: AnnualBarChartProps) {
               strokeWidth={2}
               dot={{ r: 2 }}
               activeDot={{ r: 4 }}
-            />
+            >
+              <LabelList
+                dataKey="total"
+                position="top"
+                formatter={(v) => `R$ ${Number(v ?? 0)}M`}
+                content={isDense ? (sparseContent as never) : undefined}
+                style={
+                  isDense
+                    ? undefined
+                    : { fontSize: 9, fontWeight: 700, fill: "#64748b" }
+                }
+              />
+            </Line>
           </ComposedChart>
         </ResponsiveContainer>
       </div>

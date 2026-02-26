@@ -8,14 +8,20 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  LabelList,
 } from "recharts";
 import type { CashFlowDataPoint } from "@/types/financial";
+import { createSparseLabelContent } from "@/components/charts/SparseLabelList";
+
+const DENSE_THRESHOLD = 12;
 
 interface CashFlowChartProps {
   data: CashFlowDataPoint[];
 }
 
 export function CashFlowChart({ data }: CashFlowChartProps) {
+  const isDense = data.length > DENSE_THRESHOLD;
+  const sparseContent = createSparseLabelContent(data.length);
   return (
     <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
       <div className="flex justify-between items-center mb-6">
@@ -33,7 +39,15 @@ export function CashFlowChart({ data }: CashFlowChartProps) {
       </div>
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-          <AreaChart data={data}>
+          <AreaChart
+            data={data}
+            margin={{
+              top: isDense ? 40 : 28,
+              right: isDense ? 50 : 10,
+              left: 0,
+              bottom: 0,
+            }}
+          >
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis
               dataKey="name"
@@ -70,7 +84,16 @@ export function CashFlowChart({ data }: CashFlowChartProps) {
               stroke="#10b981"
               strokeWidth={3}
               fill="rgba(16, 185, 129, 0.1)"
-            />
+            >
+              {!isDense && (
+                <LabelList
+                  dataKey="liquid"
+                  position="top"
+                  formatter={(v) => `R$ ${Number(v ?? 0)}M`}
+                  style={{ fontSize: 9, fontWeight: 700, fill: "#64748b" }}
+                />
+              )}
+            </Area>
             <Area
               yAxisId="right"
               type="monotone"
@@ -79,7 +102,19 @@ export function CashFlowChart({ data }: CashFlowChartProps) {
               strokeWidth={2}
               strokeDasharray="5 5"
               fill="none"
-            />
+            >
+              <LabelList
+                dataKey="accumulated"
+                position="top"
+                formatter={(v) => `R$ ${Number(v ?? 0)}M`}
+                content={isDense ? (sparseContent as never) : undefined}
+                style={
+                  isDense
+                    ? undefined
+                    : { fontSize: 9, fontWeight: 700, fill: "#64748b" }
+                }
+              />
+            </Area>
           </AreaChart>
         </ResponsiveContainer>
       </div>
