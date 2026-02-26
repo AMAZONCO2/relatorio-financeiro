@@ -28,9 +28,7 @@ export function ParetoChart({ data }: ParetoChartProps) {
             Impacto de impostos e custos operacionais sobre a Receita Bruta
           </p>
         </div>
-        <button className="text-[10px] font-black text-blue-500 hover:underline uppercase tracking-tighter">
-          Baixar CSV
-        </button>
+        
       </div>
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>

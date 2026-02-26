@@ -1,9 +1,190 @@
+import fs from "node:fs";
+import path from "node:path";
 import type { BudgetRow, BudgetYearData } from "@/types/financial";
+
+const CSV_FILE_PATH = path.join(
+  process.cwd(),
+  "data",
+  "fisico_financeiro_atividade.csv"
+);
 
 // ---------------------------------------------------------------------------
 // Helper: arredonda para 2 casas decimais evitando erros de ponto flutuante
 // ---------------------------------------------------------------------------
 const round2 = (v: number): number => Math.round(v * 100) / 100;
+const DEFAULT_BRL_PER_USD = 5.2;
+
+type CsvRecord = Record<string, string>;
+type ParsedCsv = {
+  headers: string[];
+  rows: CsvRecord[];
+};
+
+function parseCsvLine(line: string): string[] {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const next = line[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function parseCsv(filePath: string): ParsedCsv {
+  const raw = fs.readFileSync(filePath, "utf8");
+  const lines = raw
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const rows = lines.map(parseCsvLine);
+  const headers = rows[0].map((header) => header.trim());
+
+  return {
+    headers,
+    rows: rows.slice(1).map((row) => {
+      const record: CsvRecord = {};
+      headers.forEach((header, index) => {
+        const fallback = `col_${index}`;
+        const key = header || fallback;
+        record[key] = (row[index] || "").trim();
+      });
+      return record;
+    }),
+  };
+}
+
+function parseBrazilianCurrency(value: string): number {
+  if (!value) return 0;
+
+  const cleaned = value
+    .replace(/\s+/g, "")
+    .replace("R$", "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+
+  if (cleaned === "-" || cleaned === "") return 0;
+
+  const parsed = Number.parseFloat(cleaned);
+  return Number.isFinite(parsed) ? round2(parsed) : 0;
+}
+
+function getBrlPerUsd(): number {
+  const envRate = Number.parseFloat(process.env.NEXT_PUBLIC_BRL_USD_RATE ?? "");
+  if (Number.isFinite(envRate) && envRate > 0) return envRate;
+  return DEFAULT_BRL_PER_USD;
+}
+
+function normalizeText(value: string): string {
+  return String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findHeaderKey(
+  headers: string[],
+  matcher: (normalizedHeader: string) => boolean
+): string {
+  const found = headers.find((header) => matcher(normalizeText(header)));
+  if (!found) {
+    throw new Error("Cabeçalho obrigatório não encontrado no CSV.");
+  }
+  return found;
+}
+
+function getMonthHeaders(headers: string[]): string[] {
+  return headers.filter((header) =>
+    /^[a-z]{3}\/\d{2}$/i.test(normalizeText(header))
+  );
+}
+
+function monthKeyToPtBrLabel(monthKey: string): string {
+  const [rawMonth, rawYear] = monthKey.toLowerCase().split("/");
+  const monthMap: Record<string, string> = {
+    jan: "jan.",
+    fev: "fev.",
+    mar: "mar.",
+    abr: "abr.",
+    mai: "mai.",
+    jun: "jun.",
+    jul: "jul.",
+    ago: "ago.",
+    set: "set.",
+    out: "out.",
+    nov: "nov.",
+    dez: "dez.",
+  };
+
+  const month = monthMap[rawMonth] ?? `${rawMonth}.`;
+  const fullYear = `20${rawYear}`;
+  return `${month} de ${fullYear}`;
+}
+
+function getYearLabel(yearIndex: 1 | 2, months: string[]): string {
+  const firstYear = months[0]?.split("/")[1];
+  const lastYear = months[months.length - 1]?.split("/")[1];
+  const start = firstYear ? `20${firstYear}` : "----";
+  const end = lastYear ? `20${lastYear}` : "----";
+  return `ANO ${yearIndex} (${start} - ${end})`;
+}
+
+function isSummaryCategory(category: string): boolean {
+  const normalized = normalizeText(category);
+  return (
+    normalized.includes("gastos totais") ||
+    normalized.includes("(sem impostos)")
+  );
+}
+
+function buildRowsFromCsv(
+  csvRows: CsvRecord[],
+  categoryKey: string,
+  totalSpentKey: string,
+  totalBudgetedKey: string,
+  monthKeys: readonly string[]
+): BudgetRow[] {
+  return csvRows
+    .map((row) => {
+      const category = row[categoryKey]?.trim() ?? "";
+      if (!category || isSummaryCategory(category)) return null;
+
+      return {
+        category,
+        totalSpent: parseBrazilianCurrency(row[totalSpentKey] ?? ""),
+        totalBudgeted: parseBrazilianCurrency(row[totalBudgetedKey] ?? ""),
+        monthlyValues: monthKeys.map((monthKey) =>
+          parseBrazilianCurrency(row[monthKey] ?? "")
+        ),
+      } satisfies BudgetRow;
+    })
+    .filter((row): row is BudgetRow => row !== null);
+}
 
 // ---------------------------------------------------------------------------
 // Helper: recebe as linhas de categoria e devolve as linhas calculadas
@@ -11,9 +192,8 @@ const round2 = (v: number): number => Math.round(v * 100) / 100;
 //   - (SEM IMPOSTOS) = GASTOS TOTAIS − IMPOSTOS
 // ---------------------------------------------------------------------------
 function buildTotalRows(categoryRows: BudgetRow[]): [BudgetRow, BudgetRow] {
-  const months = categoryRows[0].monthlyValues.length;
+  const months = categoryRows[0]?.monthlyValues.length ?? 12;
 
-  // Soma geral (todas as categorias)
   const totalSpent = round2(
     categoryRows.reduce((acc, r) => acc + r.totalSpent, 0)
   );
@@ -21,11 +201,12 @@ function buildTotalRows(categoryRows: BudgetRow[]): [BudgetRow, BudgetRow] {
     categoryRows.reduce((acc, r) => acc + r.totalBudgeted, 0)
   );
   const monthlyValues = Array.from({ length: months }, (_, i) =>
-    round2(categoryRows.reduce((acc, r) => acc + r.monthlyValues[i], 0))
+    round2(categoryRows.reduce((acc, r) => acc + (r.monthlyValues[i] ?? 0), 0))
   );
 
-  // Linha de IMPOSTOS (se existir)
-  const impostos = categoryRows.find((r) => r.category === "IMPOSTOS");
+  const impostos = categoryRows.find(
+    (r) => normalizeText(r.category) === "impostos"
+  );
 
   const gastosTotais: BudgetRow = {
     category: "GASTOS TOTAIS",
@@ -48,267 +229,85 @@ function buildTotalRows(categoryRows: BudgetRow[]): [BudgetRow, BudgetRow] {
   return [gastosTotais, semImpostos];
 }
 
-// ---------------------------------------------------------------------------
-// Linhas de categoria — Ano 1
-// ---------------------------------------------------------------------------
-const ano1Categories: BudgetRow[] = [
-  {
-    category: "DUE DILIGENCE",
-    totalSpent: 0,
-    totalBudgeted: 443814.0,
-    monthlyValues: [
-      36984.5, 36984.5, 36984.5, 36984.5, 36984.5, 36984.5, 36984.5, 36984.5,
-      36984.5, 36984.5, 36984.5, 36984.5,
-    ],
-  },
-  {
-    category: "CLPI",
-    totalSpent: 0,
-    totalBudgeted: 514186.0,
-    monthlyValues: [102837.2, 257093.0, 154255.8, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "IMPLEMENTAÇÃO DE ATIVIDADES SOCIAIS",
-    totalSpent: 0,
-    totalBudgeted: 7895829.0,
-    monthlyValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "GOVERNANÇA",
-    totalSpent: 0,
-    totalBudgeted: 1331801.0,
-    monthlyValues: [
-      0, 0, 0, 133180.1, 133180.1, 133180.1, 133180.1, 133180.1, 133180.1,
-      133180.1, 133180.1, 133180.1,
-    ],
-  },
-  {
-    category: "DIAGNÓSTICO SOCIAL",
-    totalSpent: 0,
-    totalBudgeted: 493262.0,
-    monthlyValues: [
-      0, 0, 0, 98652.4, 147978.6, 147978.6, 98652.4, 0, 0, 0, 0, 0,
-    ],
-  },
-  {
-    category: "LINHA DE BASE CARBONO",
-    totalSpent: 0,
-    totalBudgeted: 321552.0,
-    monthlyValues: [0, 0, 0, 0, 64310.4, 96465.6, 96465.6, 64310.4, 0, 0, 0, 0],
-  },
-  {
-    category: "INVENTÁRIO DA FAUNA",
-    totalSpent: 0,
-    totalBudgeted: 912404.0,
-    monthlyValues: [
-      0, 0, 0, 0, 73923.8, 110885.7, 110885.7, 73923.8, 0, 0, 108597.0,
-      162895.5,
-    ],
-  },
-  {
-    category: "MONITORAMENTO (FAUNA, FLORA)",
-    totalSpent: 0,
-    totalBudgeted: 1234156.0,
-    monthlyValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "EQUITABLE EARTH - VIABILIDADE",
-    totalSpent: 0,
-    totalBudgeted: 2178109.28,
-    monthlyValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "EQUITABLE EARTH - PROJECT DESIGN",
-    totalSpent: 0,
-    totalBudgeted: 858863.72,
-    monthlyValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "EQUITABLE EARTH - MONITORAMENTO ANUAL",
-    totalSpent: 0,
-    totalBudgeted: 0,
-    monthlyValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "VVB",
-    totalSpent: 0,
-    totalBudgeted: 537452.0,
-    monthlyValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "Custos Indiretos do Projeto",
-    totalSpent: 0,
-    totalBudgeted: 536008.34,
-    monthlyValues: [
-      21666.67, 21666.67, 21666.67, 21666.67, 21666.67, 21666.67, 21666.67,
-      21666.67, 21666.67, 21666.67, 21666.67, 21666.67,
-    ],
-  },
-  {
-    category: "Custos Indiretos de Escritório",
-    totalSpent: 0,
-    totalBudgeted: 10299918.42,
-    monthlyValues: [
-      384090.0, 384090.0, 384090.0, 384090.0, 384090.0, 384090.0, 384090.0,
-      384090.0, 384090.0, 384090.0, 384090.0, 384090.0,
-    ],
-  },
-  {
-    category: "IMPOSTOS",
-    totalSpent: 0,
-    totalBudgeted: 0,
-    monthlyValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-];
+function getYearTotalBrl(rows: BudgetRow[]): number {
+  const totalRow = rows.find((row) => row.isTotal);
+  if (totalRow) {
+    return round2(totalRow.monthlyValues.reduce((acc, val) => acc + val, 0));
+  }
+  return round2(
+    rows
+      .filter((row) => !row.isSubTotal)
+      .reduce(
+        (acc, row) => acc + row.monthlyValues.reduce((a, b) => a + b, 0),
+        0
+      )
+  );
+}
+
+function brlToUsd(valueBrl: number): number {
+  return round2(valueBrl / getBrlPerUsd());
+}
+
+const parsedCsv = parseCsv(CSV_FILE_PATH);
+const categoryKey = findHeaderKey(parsedCsv.headers, (header) =>
+  header.includes("orcado")
+);
+const totalSpentKey = findHeaderKey(
+  parsedCsv.headers,
+  (header) => header === "total (gasto)"
+);
+const totalBudgetedKey = findHeaderKey(
+  parsedCsv.headers,
+  (header) => header === "total (orcado)"
+);
+
+const monthHeaders = getMonthHeaders(parsedCsv.headers);
+if (monthHeaders.length < 24) {
+  throw new Error(
+    "CSV inválido: são esperados pelo menos 24 meses para o comparativo de Ano 1 e Ano 2."
+  );
+}
+
+const ano1MonthKeys = monthHeaders.slice(3, 15);
+const ano2MonthKeys = monthHeaders.slice(15, 27);
+
+if (ano1MonthKeys.length !== 12 || ano2MonthKeys.length !== 12) {
+  throw new Error(
+    "CSV inválido: não foi possível montar blocos de 12 meses para Ano 1 e Ano 2."
+  );
+}
+
+const ano1Categories = buildRowsFromCsv(
+  parsedCsv.rows,
+  categoryKey,
+  totalSpentKey,
+  totalBudgetedKey,
+  ano1MonthKeys
+);
+const ano2Categories = buildRowsFromCsv(
+  parsedCsv.rows,
+  categoryKey,
+  totalSpentKey,
+  totalBudgetedKey,
+  ano2MonthKeys
+);
+const ano1Rows = [...ano1Categories, ...buildTotalRows(ano1Categories)];
+const ano2Rows = [...ano2Categories, ...buildTotalRows(ano2Categories)];
 
 // ---------------------------------------------------------------------------
-// Linhas de categoria — Ano 2
-// ---------------------------------------------------------------------------
-const ano2Categories: BudgetRow[] = [
-  {
-    category: "DUE DILIGENCE",
-    totalSpent: 0,
-    totalBudgeted: 443814.0,
-    monthlyValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "CLPI",
-    totalSpent: 0,
-    totalBudgeted: 514186.0,
-    monthlyValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "IMPLEMENTAÇÃO DE ATIVIDADES SOCIAIS",
-    totalSpent: 0,
-    totalBudgeted: 7895829.0,
-    monthlyValues: [
-      0, 526388.6, 1579165.8, 526388.6, 0, 526388.6, 1579165.8, 526388.6, 0,
-      526388.6, 1579165.8, 526388.6,
-    ],
-  },
-  {
-    category: "GOVERNANÇA",
-    totalSpent: 0,
-    totalBudgeted: 1331801.0,
-    monthlyValues: [133180.1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "DIAGNÓSTICO SOCIAL",
-    totalSpent: 0,
-    totalBudgeted: 493262.0,
-    monthlyValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "LINHA DE BASE CARBONO",
-    totalSpent: 0,
-    totalBudgeted: 321552.0,
-    monthlyValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "INVENTÁRIO DA FAUNA",
-    totalSpent: 0,
-    totalBudgeted: 912404.0,
-    monthlyValues: [162895.5, 108597.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "MONITORAMENTO (FAUNA, FLORA)",
-    totalSpent: 0,
-    totalBudgeted: 1234156.0,
-    monthlyValues: [
-      0, 0, 0, 138234.2, 207351.3, 207351.3, 138234.2, 0, 0, 0, 271492.5,
-      271492.5,
-    ],
-  },
-  {
-    category: "EQUITABLE EARTH - VIABILIDADE",
-    totalSpent: 0,
-    totalBudgeted: 2178109.28,
-    monthlyValues: [653432.78, 0, 0, 0, 1524676.49, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "EQUITABLE EARTH - PROJECT DESIGN",
-    totalSpent: 0,
-    totalBudgeted: 858863.72,
-    monthlyValues: [0, 0, 0, 858863.72, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "EQUITABLE EARTH - MONITORAMENTO ANUAL",
-    totalSpent: 0,
-    totalBudgeted: 0,
-    monthlyValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-  {
-    category: "VVB",
-    totalSpent: 0,
-    totalBudgeted: 537452.0,
-    monthlyValues: [0, 0, 0, 0, 0, 0, 107530.4, 268826.0, 161095.6, 0, 0, 0],
-  },
-  {
-    category: "Custos Indiretos do Projeto",
-    totalSpent: 0,
-    totalBudgeted: 536008.34,
-    monthlyValues: [
-      23000.69, 23000.69, 23000.69, 23000.69, 23000.69, 23000.69, 23000.69,
-      23000.69, 23000.69, 23000.69, 23000.69, 23000.69,
-    ],
-  },
-  {
-    category: "Custos Indiretos de Escritório",
-    totalSpent: 0,
-    totalBudgeted: 10299918.42,
-    monthlyValues: [
-      474236.53, 474236.53, 474236.53, 474236.53, 474236.53, 474236.53,
-      474236.53, 474236.53, 474236.53, 474236.53, 474236.53, 474236.53,
-    ],
-  },
-  {
-    category: "IMPOSTOS",
-    totalSpent: 0,
-    totalBudgeted: 0,
-    monthlyValues: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  },
-];
-
-// ---------------------------------------------------------------------------
-// Exportação final com totais calculados dinamicamente
+// Exportação final com totais calculados dinamicamente via CSV
 // ---------------------------------------------------------------------------
 export const budgetData: Record<"ano1" | "ano2", BudgetYearData> = {
   ano1: {
-    yearLabel: "ANO 1 (2026 - 2027)",
-    months: [
-      "abr. de 2026",
-      "mai. de 2026",
-      "jun. de 2026",
-      "jul. de 2026",
-      "ago. de 2026",
-      "set. de 2026",
-      "out. de 2026",
-      "nov. de 2026",
-      "dez. de 2026",
-      "jan. de 2027",
-      "fev. de 2027",
-      "mar. de 2027",
-    ],
-    totalDolar: 5271084.29,
-    rows: [...ano1Categories, ...buildTotalRows(ano1Categories)],
+    yearLabel: getYearLabel(1, ano1MonthKeys),
+    months: ano1MonthKeys.map(monthKeyToPtBrLabel),
+    totalDolar: brlToUsd(getYearTotalBrl(ano1Rows)),
+    rows: ano1Rows,
   },
   ano2: {
-    yearLabel: "ANO 2 (2027 - 2028)",
-    months: [
-      "abr. de 2027",
-      "mai. de 2027",
-      "jun. de 2027",
-      "jul. de 2027",
-      "ago. de 2027",
-      "set. de 2027",
-      "out. de 2027",
-      "nov. de 2027",
-      "dez. de 2027",
-      "jan. de 2028",
-      "fev. de 2028",
-      "mar. de 2028",
-    ],
-    totalDolar: 5271084.29,
-    rows: [...ano2Categories, ...buildTotalRows(ano2Categories)],
+    yearLabel: getYearLabel(2, ano2MonthKeys),
+    months: ano2MonthKeys.map(monthKeyToPtBrLabel),
+    totalDolar: brlToUsd(getYearTotalBrl(ano2Rows)),
+    rows: ano2Rows,
   },
 };

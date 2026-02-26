@@ -12,18 +12,36 @@ export async function POST(request: Request) {
   const expectedPassword = process.env.ACCESS_PASSWORD;
   const sessionToken = process.env.ACCESS_SESSION_TOKEN;
 
-  if (!expectedPassword || !sessionToken) {
-    return NextResponse.json(
-      { ok: false, message: "Configuracao de seguranca ausente no servidor." },
-      { status: 500 }
-    );
-  }
+  // Modo público: sem ACCESS_PASSWORD configurado, aceita qualquer requisição
+  const isPublicMode = !expectedPassword;
 
-  if (!password || password !== expectedPassword) {
-    return NextResponse.json(
-      { ok: false, message: "Senha invalida." },
-      { status: 401 }
-    );
+  if (isPublicMode) {
+    if (!sessionToken) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: "Configuracao de seguranca ausente no servidor.",
+        },
+        { status: 500 }
+      );
+    }
+    // Continua para setar o cookie (lógica preservada)
+  } else {
+    if (!sessionToken) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: "Configuracao de seguranca ausente no servidor.",
+        },
+        { status: 500 }
+      );
+    }
+    if (!password || password !== expectedPassword) {
+      return NextResponse.json(
+        { ok: false, message: "Senha invalida." },
+        { status: 401 }
+      );
+    }
   }
 
   const response = NextResponse.json({ ok: true });

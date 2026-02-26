@@ -19,6 +19,12 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Modo público: sem ACCESS_PASSWORD, permite acesso sem autenticação
+  const expectedPassword = process.env.ACCESS_PASSWORD;
+  if (!expectedPassword) {
+    return NextResponse.next();
+  }
+
   const expectedToken = process.env.ACCESS_SESSION_TOKEN;
   if (!expectedToken) {
     return new NextResponse("Configuracao de seguranca ausente no servidor.", {
